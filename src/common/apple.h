@@ -18,14 +18,33 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-#ifndef DELAY_H_
-#define DELAY_H_
+#pragma once
+
+#include "config.h"
+
+#if defined(LOVE_IOS) || defined(LOVE_MACOS)
+
+#include <string>
 
 namespace love
 {
+namespace apple
+{
 
-void sleep(double ms);
+enum UserDirectory
+{
+	USER_DIRECTORY_HOME,
+	USER_DIRECTORY_APPSUPPORT,
+	USER_DIRECTORY_DOCUMENTS,
+	USER_DIRECTORY_DESKTOP,
+	USER_DIRECTORY_CACHES,
+	USER_DIRECTORY_TEMP,
+};
 
-} // namespace love
+std::string getUserDirectory(UserDirectory dir);
+std::string getExecutablePath();
 
-#endif // DELAY_H_
+} // apple
+} // love
+
+#endif // defined(LOVE_IOS) || defined(LOVE_MACOS)

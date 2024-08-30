@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2006-2023 LOVE Development Team
+ * Copyright (c) 2006-2024 LOVE Development Team
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.  In no event will the authors be held liable for any damages
@@ -25,47 +25,48 @@
 
 // STD
 #include <bitset>
-#include <vector>
 
-namespace love {
-    class Type {
-    public:
-        static const uint32 MAX_TYPES = 128;
+namespace love
+{
 
-        Type(const char *name, Type *parent);
+class Type
+{
+public:
+	static const uint32 MAX_TYPES = 128;
 
-        Type(const Type &) = delete;
+	Type(const char *name, Type *parent);
+	Type(const Type&) = delete;
 
-        static Type *byName(const char *name);
+	static Type *byName(const char *name);
 
-        void init();
+	void init();
+	uint32 getId();
+	const char *getName() const;
 
-        uint32 getId();
+	bool isa(const uint32 &other)
+	{
+		if (!inited)
+			init();
+		return bits[other];
+	}
 
-        const char *getName() const;
+	bool isa(const Type &other)
+	{
+		if (!inited)
+			init();
+		// Note that if this type implements the other
+		// calling init above will also have inited
+		// the other.
+		return bits[other.id];
+	}
 
-        bool isa(const uint32 &other) {
-            if (!inited)
-                init();
-            return bits[other];
-        }
-
-        bool isa(const Type &other) {
-            if (!inited)
-                init();
-            // Note that if this type implements the other
-            // calling init above will also have inited
-            // the other.
-            return bits[other.id];
-        }
-
-    private:
-        const char *const name;
-        Type *const parent;
-        uint32 id;
-        bool inited;
-        std::bitset <MAX_TYPES> bits;
-    };
+private:
+	const char * const name;
+	Type * const parent;
+	uint32 id;
+	bool inited;
+	std::bitset<MAX_TYPES> bits;
+};
 
 } // love
 

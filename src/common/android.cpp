@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2006-2023 LOVE Development Team
+ * Copyright (c) 2006-2024 LOVE Development Team
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.  In no event will the authors be held liable for any damages
@@ -19,10 +19,12 @@
  **/
 
 #include "android.h"
+#include "Object.h"
 
 #ifdef LOVE_ANDROID
 
 #include <cerrno>
+#include <set>
 #include <unordered_map>
 
 #include <SDL.h>
@@ -35,7 +37,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "physfs.h"
+#include "libraries/physfs/physfs.h"
+#include "filesystem/physfs/PhysfsIo.h"
 
 namespace love
 {
@@ -45,13 +48,11 @@ namespace android
 void setImmersive(bool immersive_active)
 {
 	JNIEnv *env = (JNIEnv*) SDL_AndroidGetJNIEnv();
-
 	jobject activity = (jobject) SDL_AndroidGetActivity();
+	jclass clazz = env->GetObjectClass(activity);
 
-	jclass clazz(env->GetObjectClass(activity));
-	jmethodID method_id = env->GetMethodID(clazz, "setImmersiveMode", "(Z)V");
-
-	env->CallVoidMethod(activity, method_id, immersive_active);
+	static jmethodID setImmersiveMethod = env->GetMethodID(clazz, "setImmersiveMode", "(Z)V");
+	env->CallVoidMethod(activity, setImmersiveMethod, immersive_active);
 
 	env->DeleteLocalRef(activity);
 	env->DeleteLocalRef(clazz);
@@ -60,18 +61,16 @@ void setImmersive(bool immersive_active)
 bool getImmersive()
 {
 	JNIEnv *env = (JNIEnv*) SDL_AndroidGetJNIEnv();
-
 	jobject activity = (jobject) SDL_AndroidGetActivity();
+	jclass clazz = env->GetObjectClass(activity);
 
-	jclass clazz(env->GetObjectClass(activity));
-	jmethodID method_id = env->GetMethodID(clazz, "getImmersiveMode", "()Z");
-
-	jboolean immersive_active = env->CallBooleanMethod(activity, method_id);
+	static jmethodID getImmersiveMethod = env->GetMethodID(clazz, "getImmersiveMode", "()Z");
+	jboolean immersiveActive = env->CallBooleanMethod(activity, getImmersiveMethod);
 
 	env->DeleteLocalRef(activity);
 	env->DeleteLocalRef(clazz);
 
-	return immersive_active;
+	return immersiveActive;
 }
 
 double getScreenScale()
@@ -81,16 +80,13 @@ double getScreenScale()
 	if (result == -1.)
 	{
 		JNIEnv *env = (JNIEnv*) SDL_AndroidGetJNIEnv();
-		jclass activity = env->FindClass("org/love2d/android/GameActivity");
+		jobject activity = (jobject) SDL_AndroidGetActivity();
+		jclass clazz = env->GetObjectClass(activity);
 
-		jmethodID getMetrics = env->GetStaticMethodID(activity, "getMetrics", "()Landroid/util/DisplayMetrics;");
-		jobject metrics = env->CallStaticObjectMethod(activity, getMetrics);
-		jclass metricsClass = env->GetObjectClass(metrics);
+		jmethodID getDPIMethod = env->GetMethodID(clazz, "getDPIScale", "()F");
+		result = (double) env->CallFloatMethod(activity, getDPIMethod);
 
-		result = env->GetFloatField(metrics, env->GetFieldID(metricsClass, "density", "F"));
-
-		env->DeleteLocalRef(metricsClass);
-		env->DeleteLocalRef(metrics);
+		env->DeleteLocalRef(clazz);
 		env->DeleteLocalRef(activity);
 	}
 
@@ -101,85 +97,42 @@ bool getSafeArea(int &top, int &left, int &bottom, int &right)
 {
 	JNIEnv *env = (JNIEnv*) SDL_AndroidGetJNIEnv();
 	jobject activity = (jobject) SDL_AndroidGetActivity();
-	jclass clazz(env->GetObjectClass(activity));
-	jmethodID methodID = env->GetMethodID(clazz, "initializeSafeArea", "()Z");
-	bool hasSafeArea = false;
+	jclass clazz = env->GetObjectClass(activity);
+    jclass rectClass = env->FindClass("android/graphics/Rect");
+    jmethodID methodID = env->GetMethodID(clazz, "getSafeArea", "()Landroid/graphics/Rect;");
+	jobject safeArea = env->CallObjectMethod(activity, methodID);
 
-	if (methodID == nullptr)
-		// NoSuchMethodException is thrown in case methodID is null
-		env->ExceptionClear();
-	else if ((hasSafeArea = env->CallBooleanMethod(activity, methodID)))
+	if (safeArea != nullptr)
 	{
-		top = env->GetIntField(activity, env->GetFieldID(clazz, "safeAreaTop", "I"));
-		left = env->GetIntField(activity, env->GetFieldID(clazz, "safeAreaLeft", "I"));
-		bottom = env->GetIntField(activity, env->GetFieldID(clazz, "safeAreaBottom", "I"));
-		right = env->GetIntField(activity, env->GetFieldID(clazz, "safeAreaRight", "I"));
+		top = env->GetIntField(activity, env->GetFieldID(rectClass, "top", "I"));
+		left = env->GetIntField(activity, env->GetFieldID(rectClass, "left", "I"));
+		bottom = env->GetIntField(activity, env->GetFieldID(rectClass, "bottom", "I"));
+		right = env->GetIntField(activity, env->GetFieldID(rectClass, "right", "I"));
+        env->DeleteLocalRef(safeArea);
 	}
 
+    env->DeleteLocalRef(rectClass);
 	env->DeleteLocalRef(clazz);
 	env->DeleteLocalRef(activity);
 
-	return hasSafeArea;
-}
-
-const char *getSelectedGameFile()
-{
-	static const char *path = NULL;
-
-	if (path)
-	{
-		delete path;
-		path = NULL;
-	}
-
-	JNIEnv *env = (JNIEnv*) SDL_AndroidGetJNIEnv();
-	jclass activity = env->FindClass("org/love2d/android/GameActivity");
-
-	jmethodID getGamePath = env->GetStaticMethodID(activity, "getGamePath", "()Ljava/lang/String;");
-	jstring gamePath = (jstring) env->CallStaticObjectMethod(activity, getGamePath);
-	const char *utf = env->GetStringUTFChars(gamePath, 0);
-	if (utf)
-	{
-		path = SDL_strdup(utf);
-		env->ReleaseStringUTFChars(gamePath, utf);
-	}
-
-	env->DeleteLocalRef(gamePath);
-	env->DeleteLocalRef(activity);
-
-	return path;
+	return safeArea != nullptr;
 }
 
 bool openURL(const std::string &url)
 {
-	JNIEnv *env = (JNIEnv*) SDL_AndroidGetJNIEnv();
-	jclass activity = env->FindClass("org/love2d/android/GameActivity");
-
-	jmethodID openURL = env->GetStaticMethodID(activity, "openURLFromLOVE", "(Ljava/lang/String;)Z");
-
-	if (openURL == nullptr)
-	{
-		env->ExceptionClear();
-		openURL = env->GetStaticMethodID(activity, "openURL", "(Ljava/lang/String;)Z");
-	}
-
-	jstring url_jstring = (jstring) env->NewStringUTF(url.c_str());
-
-	jboolean result = env->CallStaticBooleanMethod(activity, openURL, url_jstring);
-
-	env->DeleteLocalRef(url_jstring);
-	env->DeleteLocalRef(activity);
-	return result;
+	return SDL_OpenURL(url.c_str()) == 0;
 }
 
 void vibrate(double seconds)
 {
 	JNIEnv *env = (JNIEnv*) SDL_AndroidGetJNIEnv();
-	jclass activity = env->FindClass("org/love2d/android/GameActivity");
+	jobject activity = (jobject) SDL_AndroidGetActivity();
+	jclass clazz = env->GetObjectClass(activity);
 
-	jmethodID vibrate_method = env->GetStaticMethodID(activity, "vibrate", "(D)V");
-	env->CallStaticVoidMethod(activity, vibrate_method, seconds);
+	static jmethodID vibrateMethod = env->GetMethodID(clazz, "vibrate", "(D)V");
+	env->CallVoidMethod(activity, vibrateMethod, seconds);
 
+	env->DeleteLocalRef(clazz);
 	env->DeleteLocalRef(activity);
 }
 
@@ -192,40 +145,9 @@ void freeGameArchiveMemory(void *ptr)
 	delete[] game_love_data;
 }
 
-bool loadGameArchiveToMemory(const char* filename, char **ptr, size_t *size)
-{
-	SDL_RWops *asset_game_file = SDL_RWFromFile(filename, "rb");
-	if (!asset_game_file) {
-		SDL_Log("Could not find %s", filename);
-		return false;
-	}
-
-	Sint64 file_size = asset_game_file->size(asset_game_file);
-	if (file_size <= 0) {
-		SDL_Log("Could not load game from %s. File has invalid file size: %d.", filename, (int) file_size);
-		return false;
-	}
-
-	*ptr = new char[file_size];
-	if (!*ptr) {
-		SDL_Log("Could not allocate memory for in-memory game archive");
-		return false;
-	}
-
-	size_t bytes_copied = asset_game_file->read(asset_game_file, (void*) *ptr, sizeof(char), (size_t) file_size);
-	if (bytes_copied != file_size) {
-		SDL_Log("Incomplete copy of in-memory game archive!");
-		delete[] *ptr;
-		return false;
-	}
-
-	*size = (size_t) file_size;
-	return true;
-}
-
 bool directoryExists(const char *path)
 {
-	struct stat s;
+	struct stat s {};
 	int err = stat(path, &s);
 	if (err == -1)
 	{
@@ -239,29 +161,98 @@ bool directoryExists(const char *path)
 
 bool mkdir(const char *path)
 {
-	int err = ::mkdir(path, 0770);
+	int err = ::mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO | S_ISGID);
 	if (err == -1)
 	{
-		SDL_Log("Error: Could not create directory %s", path);
+		const char *error = strerror(errno);
+		SDL_Log("Error: Could not create directory '%s': %s", path, error);
 		return false;
 	}
 
 	return true;
 }
 
+bool chmod(const char *path, int mode)
+{
+	int err = ::chmod(path, mode);
+	if (err == -1)
+	{
+		const char *error = strerror(errno);
+		SDL_Log("Error: Could not change mode '%s': %s", path, error);
+		return false;
+	}
+
+	return true;
+}
+
+inline bool tryCreateDirectory(const char *path)
+{
+	SDL_Log("Trying to create directory '%s'", path);
+
+	if (directoryExists(path))
+		return true;
+	else if (mkdir(path))
+		return true;
+	return false;
+}
+
 bool createStorageDirectories()
 {
-	std::string internal_storage_path = SDL_AndroidGetInternalStoragePath();
+	std::string internalStoragePath = SDL_AndroidGetInternalStoragePath();
+	std::string externalStoragePath = SDL_AndroidGetExternalStoragePath();
 
-	std::string save_directory = internal_storage_path + "/save";
-	if (!directoryExists(save_directory.c_str()) && !mkdir(save_directory.c_str()))
+	std::string saveDirectoryInternal = internalStoragePath + "/save";
+	if (!tryCreateDirectory(saveDirectoryInternal.c_str()))
 		return false;
 
-	std::string game_directory = internal_storage_path + "/game";
-	if (!directoryExists (game_directory.c_str()) && !mkdir(game_directory.c_str()))
+	std::string saveDirectoryExternal = externalStoragePath + "/save";
+	if (!tryCreateDirectory(saveDirectoryExternal.c_str()))
+		return false;
+
+	std::string game_directory = externalStoragePath + "/game";
+	if (!tryCreateDirectory (game_directory.c_str()))
 		return false;
 
 	return true;
+}
+
+void fixupPermissionSingleFile(const std::string &savedir, const std::string &path, int mode)
+{
+    std::string fixedSavedir = savedir.back() == '/' ? savedir : (savedir + "/");
+    std::string target = fixedSavedir + path;
+    ::chmod(target.c_str(), mode);
+}
+
+void fixupExternalStoragePermission(const std::string &savedir, const std::string &path)
+{
+	std::set<std::string> pathsToFix;
+	size_t start = 0;
+
+	while (true)
+	{
+		size_t pos = path.find('/', start);
+		if (pos == std::string::npos)
+		{
+			pathsToFix.insert(path);
+			break;
+		}
+
+		pathsToFix.insert(path.substr(0, pos));
+		start = pos + 1;
+	}
+
+	std::string fixedSavedir = savedir.back() == '/' ? savedir : (savedir + "/");
+	chmod(savedir.c_str(), S_IRWXU | S_IRWXG | S_IRWXO | S_ISGID);
+
+	for (const std::string &dir: pathsToFix)
+	{
+        const char *realPath = PHYSFS_getRealDir(dir.c_str());
+		if (!dir.empty() && strcmp(realPath, savedir.c_str()) == 0)
+		{
+			std::string target = fixedSavedir + dir;
+			chmod(target.c_str(), S_IRWXU | S_IRWXG | S_IRWXO | S_ISGID);
+		}
+	}
 }
 
 bool hasBackgroundMusic()
@@ -284,9 +275,9 @@ bool hasRecordingPermission()
 {
 	JNIEnv *env = (JNIEnv*) SDL_AndroidGetJNIEnv();
 	jobject activity = (jobject) SDL_AndroidGetActivity();
+	jclass clazz = env->GetObjectClass(activity);
 
-	jclass clazz(env->GetObjectClass(activity));
-	jmethodID methodID = env->GetMethodID(clazz, "hasRecordAudioPermission", "()Z");
+	static jmethodID methodID = env->GetMethodID(clazz, "hasRecordAudioPermission", "()Z");
 	jboolean result = false;
 
 	if (methodID == nullptr)
@@ -390,127 +381,111 @@ static AAssetManager *getAssetManager()
 
 namespace aasset
 {
-namespace io
-{
 
-struct AssetInfo
+struct AssetInfo: public love::filesystem::physfs::PhysfsIo<AssetInfo>
 {
+	static const uint32_t version = 0;
+
 	AAssetManager *assetManager;
 	AAsset *asset;
 	char *filename;
 	size_t size;
+
+	static AssetInfo *fromAAsset(AAssetManager *assetManager, const char *filename, AAsset *asset)
+	{
+		return new AssetInfo(assetManager, filename, asset);
+	}
+
+	int64_t read(void* buf, uint64_t len) const
+	{
+		int readed = AAsset_read(asset, buf, (size_t) len);
+
+		PHYSFS_setErrorCode(readed < 0 ? PHYSFS_ERR_OS_ERROR : PHYSFS_ERR_OK);
+		return (PHYSFS_sint64) readed;
+	}
+
+	int64_t write(const void* buf, uint64_t len) const
+	{
+		LOVE_UNUSED(buf);
+		LOVE_UNUSED(len);
+
+		PHYSFS_setErrorCode(PHYSFS_ERR_READ_ONLY);
+		return -1;
+	}
+
+	int64_t seek(uint64_t offset) const
+	{
+		int64_t success = AAsset_seek64(asset, (off64_t) offset, SEEK_SET) != -1;
+
+		PHYSFS_setErrorCode(success ? PHYSFS_ERR_OK : PHYSFS_ERR_OS_ERROR);
+		return success;
+	}
+
+	int64_t tell() const
+	{
+		off64_t len = AAsset_getLength64(asset);
+		off64_t remain = AAsset_getRemainingLength64(asset);
+
+		return len - remain;
+	}
+
+	int64_t length() const
+	{
+		return AAsset_getLength64(asset);
+	}
+
+	int64_t flush() const
+	{
+		// Do nothing
+		PHYSFS_setErrorCode(PHYSFS_ERR_OK);
+		return 1;
+	}
+
+	AssetInfo(const AssetInfo &other)
+	: assetManager(other.assetManager)
+	, size(strlen(other.filename) + 1)
+	{
+		asset = AAssetManager_open(assetManager, other.filename, AASSET_MODE_RANDOM);
+
+		if (asset == nullptr)
+		{
+			PHYSFS_setErrorCode(PHYSFS_ERR_OS_ERROR);
+			throw new love::Exception("Unable to duplicate AssetInfo");
+		}
+
+		filename = new (std::nothrow) char[size];
+		memcpy(filename, other.filename, size);
+	}
+
+	~AssetInfo() override
+	{
+		AAsset_close(asset);
+		delete[] filename;
+	}
+
+private:
+	AssetInfo(AAssetManager *assetManager, const char *filename, AAsset *asset)
+	: assetManager(assetManager)
+	, asset(asset)
+	, size(strlen(filename) + 1)
+	{
+		this->filename = new (std::nothrow) char[size];
+		memcpy(this->filename, filename, size);
+	}
 };
 
 static std::unordered_map<std::string, PHYSFS_FileType> fileTree;
 
-PHYSFS_sint64 read(PHYSFS_Io *io, void *buf, PHYSFS_uint64 len)
-{
-	AAsset *asset = ((AssetInfo *) io->opaque)->asset;
-	int readed = AAsset_read(asset, buf, (size_t) len);
-
-	PHYSFS_setErrorCode(readed < 0 ? PHYSFS_ERR_OS_ERROR : PHYSFS_ERR_OK);
-	return (PHYSFS_sint64) readed;
-}
-
-PHYSFS_sint64 write(PHYSFS_Io *io, const void *buf, PHYSFS_uint64 len)
-{
-	LOVE_UNUSED(io);
-	LOVE_UNUSED(buf);
-	LOVE_UNUSED(len);
-
-	PHYSFS_setErrorCode(PHYSFS_ERR_READ_ONLY);
-	return -1;
-}
-
-int seek(PHYSFS_Io *io, PHYSFS_uint64 offset)
-{
-	AAsset *asset = ((AssetInfo *) io->opaque)->asset;
-	int success = AAsset_seek64(asset, (off64_t) offset, SEEK_SET) != -1;
-
-	PHYSFS_setErrorCode(success ? PHYSFS_ERR_OK : PHYSFS_ERR_OS_ERROR);
-	return success;
-}
-
-PHYSFS_sint64 tell(PHYSFS_Io *io)
-{
-	AAsset *asset = ((AssetInfo *) io->opaque)->asset;
-	off64_t len = AAsset_getLength64(asset);
-	off64_t remain = AAsset_getRemainingLength64(asset);
-
-	return len - remain;
-}
-
-PHYSFS_sint64 length(PHYSFS_Io *io)
-{
-	AAsset *asset = ((AssetInfo *) io->opaque)->asset;
-	return AAsset_getLength64(asset);
-}
-
-// Forward declaration
-PHYSFS_Io *fromAAsset(AAssetManager *assetManager, const char *filename, AAsset *asset);
-
-PHYSFS_Io *duplicate(PHYSFS_Io *io)
-{
-	AssetInfo *assetInfo = (AssetInfo *) io->opaque;
-	AAsset *asset = AAssetManager_open(assetInfo->assetManager, assetInfo->filename, AASSET_MODE_RANDOM);
-
-	if (asset == nullptr)
-	{
-		PHYSFS_setErrorCode(PHYSFS_ERR_OS_ERROR);
-		return nullptr;
-	}
-
-	AAsset_seek64(asset, tell(io), SEEK_SET);
-	return fromAAsset(assetInfo->assetManager, assetInfo->filename, asset);
-}
-
-void destroy(PHYSFS_Io *io)
-{
-	AssetInfo *assetInfo = (AssetInfo *) io->opaque;
-	AAsset_close(assetInfo->asset);
-	delete[] assetInfo->filename;
-	delete assetInfo;
-	delete io;
-}
-
-PHYSFS_Io *fromAAsset(AAssetManager *assetManager, const char *filename, AAsset *asset)
-{
-	// Create AssetInfo
-	AssetInfo *assetInfo = new (std::nothrow) AssetInfo();
-	assetInfo->assetManager = assetManager;
-	assetInfo->asset = asset;
-	assetInfo->size = strlen(filename) + 1;
-	assetInfo->filename = new (std::nothrow) char[assetInfo->size];
-	memcpy(assetInfo->filename, filename, assetInfo->size);
-
-	// Create PHYSFS_Io
-	PHYSFS_Io *io = new (std::nothrow) PHYSFS_Io();
-	io->version = 0;
-	io->opaque = assetInfo;
-	io->read = read;
-	io->write = write;
-	io->seek = seek;
-	io->tell = tell;
-	io->length = length;
-	io->duplicate = duplicate;
-	io->flush = nullptr;
-	io->destroy = destroy;
-
-	return io;
-}
-
-}
-
 void *openArchive(PHYSFS_Io *io, const char *name, int forWrite, int *claimed)
 {
-	if (io->opaque == nullptr || memcmp(io->opaque, "ASET", 4) != 0)
+	if (forWrite || io->opaque == nullptr || memcmp(io->opaque, "ASET", 4) != 0)
 		return nullptr;
 
 	// It's our archive
 	*claimed = 1;
 	AAssetManager *assetManager = getAssetManager();
 
-	if (io::fileTree.empty())
+	if (fileTree.empty())
 	{
 		// AAssetDir_getNextFileName intentionally excludes directories, so
 		// we have to use JNI that calls AssetManager.list() recursively.
@@ -526,7 +501,7 @@ void *openArchive(PHYSFS_Io *io, const char *name, int forWrite, int *claimed)
 			jstring jstr = (jstring) env->GetObjectArrayElement(list, i);
 			const char *str = env->GetStringUTFChars(jstr, nullptr);
 
-			io::fileTree[str + 1] = str[0] == 'd' ? PHYSFS_FILETYPE_DIRECTORY : PHYSFS_FILETYPE_REGULAR;
+			fileTree[str + 1] = str[0] == 'd' ? PHYSFS_FILETYPE_DIRECTORY : PHYSFS_FILETYPE_REGULAR;
 
 			env->ReleaseStringUTFChars(jstr, str);
 			env->DeleteLocalRef(jstr);
@@ -557,9 +532,9 @@ PHYSFS_EnumerateCallbackResult enumerate(
 
 	if (path[0] != 0)
 	{
-		FileTreeIterator result = io::fileTree.find(path);
+		FileTreeIterator result = fileTree.find(path);
 
-		if (result == io::fileTree.end() || result->second != PHYSFS_FILETYPE_DIRECTORY)
+		if (result == fileTree.end() || result->second != PHYSFS_FILETYPE_DIRECTORY)
 		{
 			PHYSFS_setErrorCode(PHYSFS_ERR_NOT_FOUND);
 			return PHYSFS_ENUM_ERROR;
@@ -617,7 +592,7 @@ PHYSFS_Io *openRead(void *opaque, const char *name)
 	}
 
 	PHYSFS_setErrorCode(PHYSFS_ERR_OK);
-	return io::fromAAsset(assetManager, name, file);
+	return AssetInfo::fromAAsset(assetManager, name, file);
 }
 
 PHYSFS_Io *openWriteAppend(void *opaque, const char *name)
@@ -642,11 +617,12 @@ int removeMkdir(void *opaque, const char *name)
 
 int stat(void *opaque, const char *name, PHYSFS_Stat *out)
 {
+	using FileTreeIterator = std::unordered_map<std::string, PHYSFS_FileType>::iterator;
 	LOVE_UNUSED(opaque);
 
-	auto result = io::fileTree.find(name);
+	FileTreeIterator result = fileTree.find(name);
 
-	if (result != io::fileTree.end())
+	if (result != fileTree.end())
 	{
 		out->filetype = result->second;
 		out->modtime = -1;
@@ -657,11 +633,9 @@ int stat(void *opaque, const char *name, PHYSFS_Stat *out)
 		PHYSFS_setErrorCode(PHYSFS_ERR_OK);
 		return 1;
 	}
-	else
-	{
-		PHYSFS_setErrorCode(PHYSFS_ERR_NOT_FOUND);
-		return 0;
-	}
+
+	PHYSFS_setErrorCode(PHYSFS_ERR_NOT_FOUND);
+	return 0;
 }
 
 void closeArchive(void *opaque)
@@ -755,25 +729,23 @@ void deinitializeVirtualArchive()
 
 bool checkFusedGame(void **physfsIO_Out)
 {
-	// TODO: Reorder the loading in 12.0
 	PHYSFS_Io *&io = *(PHYSFS_Io **) physfsIO_Out;
 	AAssetManager *assetManager = getAssetManager();
 
-	// Prefer game.love inside assets/ folder
-	AAsset *asset = AAssetManager_open(assetManager, "game.love", AASSET_MODE_RANDOM);
-	if (asset)
-	{
-		io = aasset::io::fromAAsset(assetManager, "game.love", asset);
-		return true;
-	}
-
-	// If there's no game.love inside assets/ try main.lua
-	asset = AAssetManager_open(assetManager, "main.lua", AASSET_MODE_STREAMING);
-
+	// Prefer main.lua inside assets/ folder
+	AAsset *asset = AAssetManager_open(assetManager, "main.lua", AASSET_MODE_STREAMING);
 	if (asset)
 	{
 		AAsset_close(asset);
 		io = nullptr;
+		return true;
+	}
+
+	// If there's no main.lua inside assets/ try game.love
+	asset = AAssetManager_open(assetManager, "game.love", AASSET_MODE_RANDOM);
+	if (asset)
+	{
+		io = aasset::AssetInfo::fromAAsset(assetManager, "game.love", asset);
 		return true;
 	}
 
@@ -784,43 +756,179 @@ bool checkFusedGame(void **physfsIO_Out)
 const char *getCRequirePath()
 {
 	static bool initialized = false;
-	static const char *path = nullptr;
+	static std::string path;
 
 	if (!initialized)
 	{
 		JNIEnv *env = (JNIEnv*) SDL_AndroidGetJNIEnv();
 		jobject activity = (jobject) SDL_AndroidGetActivity();
+		jclass clazz = env->GetObjectClass(activity);
 
-		jclass clazz(env->GetObjectClass(activity));
-		jmethodID method_id = env->GetMethodID(clazz, "getCRequirePath", "()Ljava/lang/String;");
+		static jmethodID getCRequireMethod = env->GetMethodID(clazz, "getCRequirePath", "()Ljava/lang/String;");
 
-		path = "";
-		initialized = true;
-
-		if (method_id)
+		jstring cpath = (jstring) env->CallObjectMethod(activity, getCRequireMethod);
+		const char *utf = env->GetStringUTFChars(cpath, nullptr);
+		if (utf)
 		{
-			jstring cpath = (jstring) env->CallObjectMethod(activity, method_id);
-			const char *utf = env->GetStringUTFChars(cpath, nullptr);
-			if (utf)
-			{
-				path = SDL_strdup(utf);
-				env->ReleaseStringUTFChars(cpath, utf);
-			}
-
-			env->DeleteLocalRef(cpath);
-		}
-		else
-		{
-			// NoSuchMethodException is thrown in case methodID is null
-			env->ExceptionClear();
-			return "";
+			path = utf;
+			env->ReleaseStringUTFChars(cpath, utf);
 		}
 
+		env->DeleteLocalRef(cpath);
 		env->DeleteLocalRef(activity);
 		env->DeleteLocalRef(clazz);
 	}
 
-	return path;
+	return path.c_str();
+}
+
+int getFDFromContentProtocol(const char *path)
+{
+	int fd = -1;
+
+	if (strstr(path, "content://") == path)
+	{
+		JNIEnv *env = (JNIEnv*) SDL_AndroidGetJNIEnv();
+		jobject activity = (jobject) SDL_AndroidGetActivity();
+		jclass clazz = env->GetObjectClass(activity);
+
+		static jmethodID converter = env->GetMethodID(clazz, "convertToFileDescriptor", "(Ljava/lang/String;)I");
+
+		jstring uri = env->NewStringUTF(path);
+		fd = (int) env->CallIntMethod(activity, converter, uri);
+
+		env->DeleteLocalRef(uri);
+		env->DeleteLocalRef(clazz);
+		env->DeleteLocalRef(activity);
+	}
+
+	return fd;
+}
+
+int getFDFromLoveProtocol(const char *path)
+{
+	constexpr const char PROTOCOL[] = "love2d://fd/";
+	constexpr size_t PROTOCOL_LEN = sizeof(PROTOCOL) - 1;
+
+	if (*path == '/')
+		path++;
+
+	if (memcmp(path, PROTOCOL, PROTOCOL_LEN) == 0)
+	{
+		try
+		{
+			return std::stoi(path + PROTOCOL_LEN, nullptr, 10);
+		}
+		catch (std::logic_error &)
+		{ }
+	}
+
+	return -1;
+}
+
+class FileDescriptorTracker: public love::Object
+{
+public:
+	explicit FileDescriptorTracker(int fd): Object(), fd(fd) {}
+	~FileDescriptorTracker() override { close(fd); }
+	int getFd() const { return fd; }
+private:
+	int fd;
+};
+
+struct FileDescriptorIO
+{
+	FileDescriptorTracker *fd;
+	off64_t size;
+	off64_t offset;
+};
+
+void *getIOFromFD(int fd)
+{
+	if (fd == -1)
+		return nullptr;
+
+	// Create file descriptor IO structure
+	FileDescriptorIO *fdio = new FileDescriptorIO();
+	fdio->size = lseek64(fd, 0, SEEK_END);
+	fdio->offset = 0;
+	lseek64(fd, 0, SEEK_SET);
+
+	if (fdio->size == -1)
+	{
+		// Cannot get size
+		delete fdio;
+		return nullptr;
+	}
+
+	fdio->fd = new FileDescriptorTracker(fd);
+
+	PHYSFS_Io *io = new PHYSFS_Io();
+	io->version = 0;
+	io->opaque = fdio;
+	io->read = [](PHYSFS_Io *io, void *buf, PHYSFS_uint64 size)
+	{
+		FileDescriptorIO *fdio = (FileDescriptorIO *) io->opaque;
+		ssize_t ret = pread64(fdio->fd->getFd(), buf, (size_t) size, fdio->offset);
+
+		if (ret == -1)
+			PHYSFS_setErrorCode(PHYSFS_ERR_OTHER_ERROR);
+		else
+			fdio->offset = std::min(fdio->offset + (off64_t) ret, fdio->size);
+
+		return (PHYSFS_sint64) ret;
+	};
+	io->write = nullptr;
+	io->seek = [](PHYSFS_Io *io, PHYSFS_uint64 offset)
+	{
+		FileDescriptorIO *fdio = (FileDescriptorIO *) io->opaque;
+		fdio->offset = std::min(std::max<off64_t>((off64_t) offset, 0), fdio->size);
+		// Always success
+		return 1;
+	};
+	io->tell = [](PHYSFS_Io *io)
+	{
+		FileDescriptorIO *fdio = (FileDescriptorIO *) io->opaque;
+		return (PHYSFS_sint64) fdio->offset;
+	};
+	io->length = [](PHYSFS_Io *io)
+	{
+		FileDescriptorIO *fdio = (FileDescriptorIO *) io->opaque;
+		return (PHYSFS_sint64) fdio->size;
+	};
+	io->duplicate = [](PHYSFS_Io *io)
+	{
+		FileDescriptorIO *fdio = (FileDescriptorIO *) io->opaque;
+		FileDescriptorIO *fdio2 = new FileDescriptorIO();
+		PHYSFS_Io *io2 = new PHYSFS_Io();
+
+		fdio->fd->retain();
+
+		// Copy data
+		*fdio2 = *fdio;
+		*io2 = *io;
+		io2->opaque = fdio2;
+
+		return io2;
+	};
+	io->flush = nullptr;
+	io->destroy = [](PHYSFS_Io *io)
+	{
+		FileDescriptorIO *fdio = (FileDescriptorIO *) io->opaque;
+		fdio->fd->release();
+		delete fdio;
+		delete io;
+	};
+
+	return io;
+}
+
+const char *getArg0()
+{
+	static PHYSFS_AndroidInit androidInit = {nullptr, nullptr};
+	androidInit.jnienv = SDL_AndroidGetJNIEnv();
+	androidInit.context = SDL_AndroidGetActivity();
+	return (const char *) &androidInit;
 }
 
 } // android

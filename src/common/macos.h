@@ -18,40 +18,52 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
+#pragma once
+
 #include "config.h"
 
-#ifdef LOVE_WINDOWS
+#ifdef LOVE_MACOS
 
 #include <string>
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+typedef struct SDL_Window SDL_Window;
 
 namespace love
 {
+namespace macos
+{
 
 /**
- * Convert the wide string to a UTF-8 encoded string.
- * @param wstr The wide-char string.
- * @return A UTF-8 string.
+ * Returns the filepath of the first detected love file in the Resources folder
+ * in the main bundle (love.app.)
+ * Returns an empty string if no love file is found.
  **/
-std::string to_utf8(LPCWSTR wstr);
+LOVE_EXPORT std::string getLoveInResources();
 
 /**
- * Convert a UTF-8 encoded string to a wide string.
- * @param str The UTF-8 string.
- * @return A wide string.
-**/
-std::wstring to_widestr(const std::string &str);
-
-/**
- * Replace all occurences of 'find' with 'replace' in a string.
- * @param str The string to modify.
- * @param find The character to match.
- * @param replace The character to replace matches.
+ * Checks for drop-file events. Returns the filepath if an event occurred, or
+ * an empty string otherwise.
  **/
-void replace_char(std::string &str, char find, char replace);
+LOVE_EXPORT std::string checkDropEvents();
 
+/**
+ * Bounce the dock icon, if the app isn't in the foreground.
+ **/
+void requestAttention(bool continuous);
+
+/**
+ * Sets whether vsync is enabled for the given CAMetalLayer
+ **/
+void setMetalLayerVSync(void *metallayer, bool vsync);
+bool getMetalLayerVSync(void *metallayer);
+
+/**
+ * Explicitly sets the window's color space to be sRGB - which stops the OS
+ * from interpreting the backbuffer output as P3 on P3-capable displays.
+ **/
+void setWindowSRGBColorSpace(SDL_Window *window);
+
+} // macos
 } // love
 
-#endif // LOVE_WINDOWS
+#endif // LOVE_MACOS

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2006-2023 LOVE Development Team
+ * Copyright (c) 2006-2024 LOVE Development Team
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.  In no event will the authors be held liable for any damages
@@ -50,11 +50,6 @@ double getScreenScale();
  **/
 bool getSafeArea(int &top, int &left, int &bottom, int &right);
 
-/**
- * Gets the selected love file in the device filesystem.
- **/
-const char *getSelectedGameFile();
-
 bool openURL(const std::string &url);
 
 void vibrate(double seconds);
@@ -64,13 +59,15 @@ void vibrate(double seconds);
  */
 void freeGameArchiveMemory(void *ptr);
 
-bool loadGameArchiveToMemory(const char *filename, char **ptr, size_t *size);
-
 bool directoryExists(const char *path);
 
 bool mkdir(const char *path);
 
 bool createStorageDirectories();
+
+void fixupPermissionSingleFile(const std::string &savedir, const std::string &path, int mode = 0666);
+
+void fixupExternalStoragePermission(const std::string &savedir, const std::string &path);
 
 bool hasBackgroundMusic();
 
@@ -102,6 +99,33 @@ void deinitializeVirtualArchive();
 bool checkFusedGame(void **physfsIO_Out);
 
 const char *getCRequirePath();
+
+/**
+ * Convert "content://" to file descriptor.
+ * @param path Path with content:// URI
+ * @return File descriptor if successful, -1 on failure.
+ */
+int getFDFromContentProtocol(const char *path);
+
+/**
+ * Attempt to parse "(/)love2d://fd/<fd>" from path.
+ * @param path Potentially special path.
+ * @return File descriptor passed if successful, -1 if path is not valid.
+ */
+int getFDFromLoveProtocol(const char *path);
+
+/**
+ * Create PHYSFS_Io from file descriptor.
+ * @param fd File descriptor
+ * @return PHYSFS_Io casted to void*.
+ */
+void *getIOFromFD(int fd);
+
+/**
+ * Retrieve PHYSFS_AndroidInit structure.
+ * @return Pointer to PHYSFS_AndroidInit structure, casted to pointer of char.
+ */
+const char *getArg0();
 
 } // android
 } // love
