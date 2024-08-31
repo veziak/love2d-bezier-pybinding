@@ -22,15 +22,20 @@
 #define LOVE_MATH_BEZIER_CURVE_H
 
 // LOVE
+#include "common/Object.h"
 #include "common/Vector.h"
 #include <vector>
 
 namespace love
 {
+namespace math
+{
 
-class BezierCurve
+class BezierCurve : public Object
 {
 public:
+
+	static love::Type type;
 
 	/**
 	 * @param controlPoints Control polygon of the curve.
@@ -139,6 +144,7 @@ private:
 	std::vector<Vector2> controlPoints;
 };
 
+}
 }
 
 #endif

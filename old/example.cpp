@@ -1,6 +1,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <vector>
+#include <algorithm>
+#include <iostream>
 
 // ----------------
 // Regular C++ code
@@ -30,9 +32,16 @@ std::vector<double> modify(const std::vector<double>& input)
   return output;
 }
 
+int main()
+{
+
+  std::cout << "sdfsdfsdfsf" << "\n";
+}
+
 // ----------------
 // Python interface
 // ----------------
+
 
 namespace py = pybind11;
 
@@ -42,3 +51,5 @@ PYBIND11_MODULE(example,m)
 
   m.def("modify", &modify, "Multiply all entries of a list by 2.0");
 }
+
+

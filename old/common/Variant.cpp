@@ -21,7 +21,7 @@
 #include <memory>
 
 #include "Variant.h"
-#include "common/StringMap.h"
+#include "StringMap.h"
 
 namespace love
 {

@@ -18,6 +18,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
+#include "config.h"
 #include "Exception.h"
 
 #include <iostream>
@@ -60,6 +61,7 @@ Exception::Exception(const char *fmt, ...)
 }
 
 Exception::~Exception() throw()
-= default;
+{
+}
 
 }

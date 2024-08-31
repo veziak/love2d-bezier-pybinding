@@ -19,6 +19,7 @@
  **/
 
 #include "Matrix.h"
+#include "config.h"
 
 // STD
 #include <cstring> // memcpy

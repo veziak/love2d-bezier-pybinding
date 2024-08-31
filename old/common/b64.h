@@ -18,29 +18,38 @@
  * 3. This notice may not be removed or altered from any source distribution.
  **/
 
-// LOVE
-#include "Data.h"
-#include "thread/threads.h"
+#include "config.h"
+
+#include <stddef.h>
+
+#ifndef LOVE_B64_H
+#define LOVE_B64_H
 
 namespace love
 {
 
-love::Type Data::type("Data", &Object::type);
+/**
+ * Base64-encode data.
+ *
+ * @param old The data to encode.
+ * @param srclen The size in bytes of the data.
+ * @param linelen The maximum length of each line in the encoded string.
+ *        0 indicates no maximum length.
+ * @param dstlen The length of the encoded string is stored here.
+ * @return A string containing the base64-encoded data (allocated with new[]).
+ */
+char *b64_encode(const char *src, size_t srclen, size_t linelen, size_t &dstlen);
 
-Data::~Data()
-{
-	delete mutex;
-}
-
-static void createMutex(love::thread::Mutex **mutexAddress)
-{
-	*mutexAddress = love::thread::newMutex();
-}
-
-love::thread::Mutex *Data::getMutex()
-{
-	std::call_once(mutexCreated, createMutex, &mutex);
-	return mutex;
-}
+/**
+ * Decode base64 encoded data.
+ *
+ * @param old The string containing the base64 data.
+ * @param srclen The length of the string.
+ * @param dstlen The size of the binary data is stored here.
+ * @return A chunk of memory containing the binary data (allocated with new[]).
+ */
+char *b64_decode(const char *src, size_t srclen, size_t &dstlen);
 
 } // love
+
+#endif // LOVE_B64_H

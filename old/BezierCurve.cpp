@@ -23,7 +23,7 @@
 // LOVE
 #include "BezierCurve.h"
 #include "common/Exception.h"
-#include "common/MathModule.h"
+
 #include <cmath>
 #include <algorithm>
 
@@ -88,6 +88,10 @@ void subdivide(vector<love::Vector2> &points, int k)
 
 namespace love
 {
+namespace math
+{
+
+//love::Type BezierCurve::type("BezierCurve", &Object::type);
 
 BezierCurve::BezierCurve(const vector<Vector2> &pts)
 	: controlPoints(pts)
@@ -276,41 +280,16 @@ vector<Vector2> BezierCurve::renderSegment(double start, double end, int accurac
 	return vertices;
 }
 
-
-BezierCurve *Math::newBezierCurve(const std::vector<Vector2> &points)
-{
-	return new BezierCurve(points);
-}
-
-
+} // namespace math
 } // namespace love
 
 
 namespace py = pybind11;
 PYBIND11_MODULE(bezier_curve, m) {
-	py::class_<love::Exception>(m, "Exception")
-		.def(py::init<const char *>(), py::arg("fmt"));
-    py::class_<love::BezierCurve>(m, "BezierCurve")
-        .def(py::init<const std::vector<love::Vector2>&>())
-		.def("render", &love::BezierCurve::render, py::arg("accuracy") = 4)
-		.def("render_segment", &love::BezierCurve::renderSegment, py::arg("start"), py::arg("end"), py::arg("accuracy") = 100)
-        ;
+    //py::class_<love::Object>(m, "Object");
+    py::class_<love::math::BezierCurve>(m, "BezierCurve")
+        .def(py::init<love::Vector2&>());
 	py::class_<love::Vector2>(m, "Vector2")
-		.def(py::init<>())  // Default constructor
-		.def(py::init<float, float>())  // Constructor with x and y
-		.def_readwrite("x", &love::Vector2::x)
-		.def_readwrite("y", &love::Vector2::y);
-		;
-
-	// Define Triangle class
-	py::class_<love::Triangle>(m, "Triangle")
-		.def(py::init<const love::Vector2&, const love::Vector2&, const love::Vector2&>())
-		.def_readwrite("a", &love::Triangle::a)
-		.def_readwrite("b", &love::Triangle::b)
-		.def_readwrite("c", &love::Triangle::c)
-		;
-
-
-	m.def("triangulate", &love::triangulate);
-
+		.def(py::init())
+		.def(py::init<float, float>());
 }

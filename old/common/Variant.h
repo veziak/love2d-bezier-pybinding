@@ -21,9 +21,9 @@
 #ifndef LOVE_VARIANT_H
 #define LOVE_VARIANT_H
 
-#include "common/config.h"
-#include "common/Object.h"
-#include "common/int.h"
+#include "config.h"
+#include "Object.h"
+#include "int.h"
 
 #include <cstring>
 #include <string>
