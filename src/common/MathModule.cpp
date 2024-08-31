@@ -73,6 +73,9 @@ bool any_point_in_triangle(const std::list<const Vector2 *> &vertices, const Vec
 	return false;
 }
 
+// The is_ear function in the provided code is used to determine if a triangle formed by
+// three points (a, b, and c) in a polygon is an "ear".
+// An ear is a triangle that has no other polygon points inside it and is oriented counter-clockwise.
 inline bool is_ear(const Vector2 &a, const Vector2 &b, const Vector2 &c, const std::list<const Vector2 *> &vertices)
 {
 	return is_oriented_ccw(a,b,c) && !any_point_in_triangle(vertices, a,b,c);
