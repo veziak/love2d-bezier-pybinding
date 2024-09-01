@@ -13,15 +13,6 @@ def bezier_curve_remove_endpoints(points: bezier_curve.Vector2):
     return result
 
 
-def print_vector(v):
-    print(f"x: {p.x}, y: {p.y}")
-
-
-def print_triangle(v):
-    print_vector(v.a)
-    print_vector(v.b)
-    print_vector(v.c)
-    print('--------------')
 
 
 p1 = bezier_curve.Vector2(float(4865.3502992126), float(3149.9546456693))
@@ -34,9 +25,10 @@ b = bezier_curve.BezierCurve(points).render(3)
 b = bezier_curve_remove_endpoints(b)
 
 for p in b:
-    print_vector(p)
+    print(v)
 
 triangles = bezier_curve.triangulate(b)
 print(f'len: {len(triangles)}')
 for t in triangles:
-    print_triangle(t)
+    print(t)
+    print('--------------')

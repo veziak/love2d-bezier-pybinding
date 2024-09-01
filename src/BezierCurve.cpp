@@ -299,8 +299,8 @@ PYBIND11_MODULE(bezier_curve, m) {
 		.def(py::init<>())  // Default constructor
 		.def(py::init<float, float>())  // Constructor with x and y
 		.def_readwrite("x", &love::Vector2::x)
-		.def_readwrite("y", &love::Vector2::y);
-		;
+		.def_readwrite("y", &love::Vector2::y)
+		.def("__str__", &love::Vector2::__str__);
 
 	// Define Triangle class
 	py::class_<love::Triangle>(m, "Triangle")
@@ -308,9 +308,7 @@ PYBIND11_MODULE(bezier_curve, m) {
 		.def_readwrite("a", &love::Triangle::a)
 		.def_readwrite("b", &love::Triangle::b)
 		.def_readwrite("c", &love::Triangle::c)
-		;
-
+		.def("__str__", &love::Triangle::__str__);
 
 	m.def("triangulate", &love::triangulate);
-
 }

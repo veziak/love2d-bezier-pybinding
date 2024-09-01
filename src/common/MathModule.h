@@ -43,6 +43,12 @@ struct Triangle
 		: a(x), b(y), c(z)
 	{}
 	Vector2 a, b, c;
+
+	std::string __str__() const {
+		return "((" + std::to_string(a.x) + ", " + std::to_string(a.y) + "),"
+		"(" + std::to_string(b.x) + ", " + std::to_string(b.y) + ")"
+		"(" + std::to_string(c.x) + ", " + std::to_string(c.y) + "))";
+	}
 };
 
 /**

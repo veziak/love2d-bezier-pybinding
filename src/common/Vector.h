@@ -23,6 +23,7 @@
 
 // STD
 #include <cmath>
+#include <string>
 
 namespace love
 {
@@ -43,6 +44,10 @@ struct Vector2
 	Vector2(const Vector2 &v)
 		: x(v.x), y(v.y)
 	{}
+
+	std::string __str__() const {
+		return "(" + std::to_string(x) + ", " + std::to_string(y) + ")";
+	}
 
 	float getLength() const;
 	float getLengthSquare() const;
